@@ -36,11 +36,14 @@
  */
 #define MAKE_PLUGIN(T,Super) extern "C" Super* create() { return new T(); }
 
+
+/**
+ * Loader:
+ * This class implements the dll-loader
+ */
 template <typename T>  class Loader {
 
-	std::map<std::string,void*> map_handler;
-	std::map<std::string,std::shared_ptr<T>> map_plugin; 
-	
+	std::map<std::string,void*> map_handler; 
 
 	public:
 		Loader() {};
@@ -53,27 +56,30 @@ template <typename T>  class Loader {
 		std::shared_ptr<T> load(std::string path);
 };
 
-
+/** load()
+ * this function retreives the shared pointer of the class provided by the plugin in path.
+ * If the plugin has been already loaded, it retrieves its previous instantiation
+ */
 template<typename T> std::shared_ptr<T> Loader<T>::load(std::string path) {
 	using std::cout;
     using std::cerr;
+    void* handler;
     
-	typename std::map<std::string,std::shared_ptr<T>>::iterator it = map_plugin.find(path);
-	if (it != map_plugin.end()) {
+	typename std::map<std::string,void*>::iterator it = map_handler.find(path);
+	if (it != map_handler.end()) {
 		cout << "Got!" << std::endl;
-		return it->second;
+		handler =  it->second;
+	} else {
+		handler = dlopen(path.c_str(), RTLD_LAZY);
+		if (!handler) {
+		    cerr << "Cannot load library: " << dlerror() << '\n';
+		    std::shared_ptr<T> toret{nullptr};
+			return toret;
+		}
+		// reset errors
+		dlerror();
 	}
-
-    // load the triangle library
-    void* handler = dlopen(path.c_str(), RTLD_LAZY);
-    if (!handler) {
-        cerr << "Cannot load library: " << dlerror() << '\n';
-        std::shared_ptr<T> toret{nullptr};
-    	return toret;
-    }
-
-    // reset errors
-    dlerror();
+  
     typedef T* plugin_create_t();
     
     // load the symbols
@@ -84,12 +90,10 @@ template<typename T> std::shared_ptr<T> Loader<T>::load(std::string path) {
         std::shared_ptr<T> toret{nullptr};
     	return toret;
     }
-    
 
     // create an instance of the class
     map_handler[path] = handler;
     std::shared_ptr<T> toret{constructor()};
-    map_plugin[path] = toret;
     
     return toret;
 }
